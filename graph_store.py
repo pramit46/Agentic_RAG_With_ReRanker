@@ -38,6 +38,32 @@ class GraphStore:
             self.driver.close()
             print("✓ Closed Neo4j connection")
     
+    def _extract_keywords(self, query: str) -> List[str]:
+        """
+        Extract meaningful keywords from a natural language query
+        Removes common stop words and punctuation
+        
+        Args:
+            query: User's search query
+        
+        Returns:
+            List of keywords to search for
+        """
+        # Common stop words to filter out
+        stop_words = {'what', 'is', 'are', 'the', 'a', 'an', 'how', 'why', 'when', 'where', 
+                      'who', 'which', 'can', 'could', 'would', 'should', 'do', 'does', 'did',
+                      'tell', 'me', 'about', 'explain', 'describe', 'define'}
+        
+        # Remove punctuation and split into words
+        import re
+        words = re.findall(r'\b\w+\b', query.lower())
+        
+        # Filter out stop words and short words (< 3 chars)
+        keywords = [w for w in words if w not in stop_words and len(w) >= 3]
+        
+        # If no keywords found, return original query
+        return keywords if keywords else [query]
+    
     def create_document_node(self, doc_id: str, text: str, metadata: Dict[str, Any]) -> None:
         """
         Create a document node in the graph database
@@ -130,27 +156,41 @@ class GraphStore:
         if top_k is None:
             top_k = config.TOP_K_GRAPH
         
+        # Extract keywords from natural language query
+        keywords = self._extract_keywords(query)
+        
         documents = []
+        doc_ids_seen = set()  # Track unique documents
         
         with self.driver.session() as session:
-            # Search for documents related to entities matching the query
-            result = session.run("""
-                MATCH (d:Document)-[r]->(e:Entity)
-                WHERE e.name CONTAINS $search_query OR d.text CONTAINS $search_query
-                WITH d, COUNT(r) as relationship_count
-                ORDER BY relationship_count DESC
-                LIMIT $limit
-                RETURN d.id as id, d.text as text, d.metadata as metadata, relationship_count
-            """, search_query=query, limit=top_k)
+            # Search for each keyword and combine results
+            for keyword in keywords:
+                result = session.run("""
+                    MATCH (d:Document)-[r]->(e:Entity)
+                    WHERE toLower(e.name) CONTAINS toLower($search_query) 
+                       OR toLower(d.text) CONTAINS toLower($search_query)
+                    WITH d, COUNT(r) as relationship_count
+                    ORDER BY relationship_count DESC
+                    LIMIT $limit
+                    RETURN d.id as id, d.text as text, d.metadata as metadata, relationship_count
+                """, search_query=keyword, limit=top_k)
+                
+                for record in result:
+                    doc_id = record["id"]
+                    # Only add each document once (take highest score)
+                    if doc_id not in doc_ids_seen:
+                        doc_ids_seen.add(doc_id)
+                        documents.append({
+                            "text": record["text"],
+                            "metadata": json.loads(record["metadata"]) if record["metadata"] else {},
+                            "score": float(record["relationship_count"]) / 10.0,  # Normalize score
+                            "source": "graph_search",
+                            "id": doc_id
+                        })
             
-            for record in result:
-                documents.append({
-                    "text": record["text"],
-                    "metadata": json.loads(record["metadata"]) if record["metadata"] else {},
-                    "score": float(record["relationship_count"]) / 10.0,  # Normalize score
-                    "source": "graph_search",
-                    "id": record["id"]
-                })
+            # Sort by score and limit results
+            documents.sort(key=lambda x: x["score"], reverse=True)
+            documents = documents[:top_k]
         
         return documents
     
