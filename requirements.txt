@@ -1,0 +1,32 @@
+# Core dependencies for Agentic RAG with VectorDB, GraphDB, and Re-ranking
+langchain==0.1.20
+langchain-openai==0.1.6
+langchain-community==0.0.38
+langgraph==0.0.53
+
+# Vector Database
+chromadb==0.4.24
+sentence-transformers==2.7.0
+
+# Graph Database
+neo4j==5.18.0
+
+# BM25 Retrieval
+rank-bm25==0.2.2
+
+# LLM and Embeddings
+openai==1.25.0
+tiktoken==0.6.0
+
+# Data processing
+numpy==1.26.4
+pandas==2.2.2
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.7.1
+rich==13.7.1
+
+# FastAPI for potential API deployment
+fastapi==0.111.0
+uvicorn==0.29.0
