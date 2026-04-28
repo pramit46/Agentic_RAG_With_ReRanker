@@ -4,8 +4,7 @@ Coordinates retrieval from multiple sources and synthesizes final answers
 """
 from typing import List, Dict, Any, Optional
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from vector_store import VectorStore
 from graph_store import GraphStore
 from bm25_retriever import BM25Retriever
