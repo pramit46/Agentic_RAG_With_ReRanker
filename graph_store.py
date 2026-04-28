@@ -136,12 +136,12 @@ class GraphStore:
             # Search for documents related to entities matching the query
             result = session.run("""
                 MATCH (d:Document)-[r]->(e:Entity)
-                WHERE e.name CONTAINS $query OR d.text CONTAINS $query
+                WHERE e.name CONTAINS $search_query OR d.text CONTAINS $search_query
                 WITH d, COUNT(r) as relationship_count
                 ORDER BY relationship_count DESC
-                LIMIT $top_k
+                LIMIT $limit
                 RETURN d.id as id, d.text as text, d.metadata as metadata, relationship_count
-            """, query=query, top_k=top_k)
+            """, search_query=query, limit=top_k)
             
             for record in result:
                 documents.append({

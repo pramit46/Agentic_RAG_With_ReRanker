@@ -15,11 +15,18 @@ class Config:
     All settings are loaded from environment variables with sensible defaults
     """
     
-    # OpenAI Configuration
+    # LLM Provider Configuration
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" or "openai"
+    
+    # OpenAI Configuration (only needed if using OpenAI)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")
     TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.7"))
     MAX_TOKENS: int = int(os.getenv("MAX_TOKENS", "2000"))
+    
+    # Ollama Configuration (only needed if using Ollama)
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3")
     
     # Neo4j Graph Database Configuration
     NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -49,8 +56,15 @@ class Config:
         Validate that all required configurations are set
         Returns True if configuration is valid, raises ValueError otherwise
         """
-        if not cls.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY is required. Please set it in .env file")
+        # Validate based on LLM provider
+        if cls.LLM_PROVIDER == "openai" and not cls.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai. Please set it in .env file")
+        
+        if cls.LLM_PROVIDER == "ollama":
+            print(f"✓ Using Ollama at {cls.OLLAMA_BASE_URL} with model {cls.OLLAMA_MODEL}")
+        
+        if cls.LLM_PROVIDER not in ["openai", "ollama"]:
+            raise ValueError(f"Invalid LLM_PROVIDER: {cls.LLM_PROVIDER}. Must be 'openai' or 'ollama'")
         
         # Create necessary directories
         Path(cls.CHROMA_PERSIST_DIRECTORY).mkdir(parents=True, exist_ok=True)

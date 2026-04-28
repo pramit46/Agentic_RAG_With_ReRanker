@@ -4,6 +4,7 @@ Coordinates retrieval from multiple sources and synthesizes final answers
 """
 from typing import List, Dict, Any, Optional
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 from vector_store import VectorStore
 from graph_store import GraphStore
@@ -16,6 +17,7 @@ class AgenticRAG:
     """
     Agentic RAG system that intelligently orchestrates multiple retrieval methods
     Combines vector search, graph traversal, BM25, and HITL re-ranking
+    Supports both OpenAI and Ollama as LLM providers
     """
     
     def __init__(self):
@@ -24,16 +26,15 @@ class AgenticRAG:
         """
         print("\n🚀 Initializing Agentic RAG System...")
         
-        # Initialize LLM
-        if not config.OPENAI_API_KEY:
-            raise ValueError("OpenAI API key is required. Please set OPENAI_API_KEY in .env file")
+        # Initialize LLM based on provider
+        print(f"  ↳ LLM Provider: {config.LLM_PROVIDER}")
         
-        self.llm = ChatOpenAI(
-            model=config.LLM_MODEL,
-            temperature=config.TEMPERATURE,
-            max_tokens=config.MAX_TOKENS,
-            openai_api_key=config.OPENAI_API_KEY
-        )
+        if config.LLM_PROVIDER == "openai":
+            self.llm = self._initialize_openai_llm()
+        elif config.LLM_PROVIDER == "ollama":
+            self.llm = self._initialize_ollama_llm()
+        else:
+            raise ValueError(f"Unsupported LLM provider: {config.LLM_PROVIDER}")
         
         # Initialize retrieval components
         self.vector_store = VectorStore()
@@ -42,6 +43,43 @@ class AgenticRAG:
         self.hitl_reranker = HITLReranker()
         
         print("✅ Agentic RAG System initialized successfully\n")
+    
+    def _initialize_openai_llm(self):
+        """
+        Initialize OpenAI LLM
+        Requires OPENAI_API_KEY in environment
+        
+        Returns:
+            ChatOpenAI instance
+        """
+        if not config.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is required when using OpenAI provider")
+        
+        print(f"  ↳ Model: {config.LLM_MODEL}")
+        
+        return ChatOpenAI(
+            model=config.LLM_MODEL,
+            temperature=config.TEMPERATURE,
+            max_tokens=config.MAX_TOKENS,
+            openai_api_key=config.OPENAI_API_KEY
+        )
+    
+    def _initialize_ollama_llm(self):
+        """
+        Initialize Ollama LLM (local, open-source models)
+        Requires Ollama to be running at OLLAMA_BASE_URL
+        
+        Returns:
+            ChatOllama instance
+        """
+        print(f"  ↳ Model: {config.OLLAMA_MODEL}")
+        print(f"  ↳ Base URL: {config.OLLAMA_BASE_URL}")
+        
+        return ChatOllama(
+            model=config.OLLAMA_MODEL,
+            base_url=config.OLLAMA_BASE_URL,
+            temperature=config.TEMPERATURE
+        )
     
     def _deduplicate_results(self, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
