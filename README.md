@@ -36,6 +36,12 @@ A production-ready Retrieval-Augmented Generation (RAG) system that combines:
 - Modular, extensible architecture
 - Health checks and service dependencies in Docker
 
+### CI/CD & Deployment
+- **Jenkins Pipeline**: Automated builds with [Jenkinsfile](Jenkinsfile) → [Setup Guide](JENKINS_ECR_SETUP.md)
+- **GitLab CI/CD**: Native GitLab integration with [.gitlab-ci.yml](.gitlab-ci.yml) → [Setup Guide](GITLAB_CI_SETUP.md)
+- **AWS ECR**: Both pipelines push to AWS Elastic Container Registry
+- **Comparison**: [CI/CD Options Comparison](CI_CD_COMPARISON.md)
+
 ## 🚀 Quick Start
 
 ### Option 1: Docker (Recommended)
@@ -277,35 +283,47 @@ Restart the application to apply changes. See [SWITCHING_LLM_PROVIDERS.md](SWITC
 
 ```
 .
-├── agent.py                    # Main RAG orchestrator with fusion ranking
-├── vector_store.py             # ChromaDB vector database wrapper
-├── graph_store.py              # Neo4j graph database with keyword extraction
-├── bm25_retriever.py           # BM25 keyword search implementation
-├── hitl_reranker.py            # HITL re-ranking with implicit feedback
-├── config.py                   # Configuration management & validation
-├── sample_data.py              # Sample documents for testing
-├── main.py                     # CLI application entry point
-├── start.sh                    # Convenience launcher script
+├── Core Application
+│   ├── agent.py                    # Main RAG orchestrator with fusion ranking
+│   ├── vector_store.py             # ChromaDB vector database wrapper
+│   ├── graph_store.py              # Neo4j graph database with keyword extraction
+│   ├── bm25_retriever.py           # BM25 keyword search implementation
+│   ├── hitl_reranker.py            # HITL re-ranking with implicit feedback
+│   ├── config.py                   # Configuration management & validation
+│   ├── sample_data.py              # Sample documents for testing
+│   ├── main.py                     # CLI application entry point
+│   └── start.sh                    # Convenience launcher script
 │
-├── requirements.txt            # Python dependencies
-├── .env.example                # Environment variables template
-├── .env                        # Your configuration (not in git)
+├── Configuration
+│   ├── requirements.txt            # Python dependencies
+│   ├── .env.example                # Environment variables template
+│   └── .env                        # Your configuration (not in git)
 │
-├── Dockerfile                  # Container image definition
-├── docker-compose.yml          # Full stack orchestration
-├── .dockerignore               # Docker build exclusions
+├── Docker & Deployment
+│   ├── Dockerfile                  # Container image definition
+│   ├── docker-compose.yml          # Full stack orchestration (Neo4j + Ollama + App)
+│   └── .dockerignore               # Docker build exclusions
 │
-├── README.md                   # This file
-├── DOCKER_GUIDE.md             # Complete Docker documentation
-├── SETUP_COMPLETE.md           # Initial setup guide
-├── SYSTEM_EXPLANATION.md       # Architecture deep dive
-├── FUSION_RANKING_EXPLAINED.md # RRF algorithm details
-├── SWITCHING_LLM_PROVIDERS.md  # LLM provider guide
-└── OLLAMA_ADDED.md             # Ollama integration summary
+├── CI/CD Pipelines
+│   ├── Jenkinsfile                 # Jenkins pipeline for AWS ECR
+│   ├── .gitlab-ci.yml              # GitLab CI/CD pipeline for AWS ECR
+│   └── ecr-iam-policy.json         # AWS IAM permissions for ECR
+│
+├── Documentation
+│   ├── README.md                   # This file - main documentation
+│   ├── DOCKER_GUIDE.md             # Complete Docker setup & usage
+│   ├── JENKINS_ECR_SETUP.md        # Jenkins pipeline setup guide
+│   ├── GITLAB_CI_SETUP.md          # GitLab CI/CD setup guide
+│   ├── CI_CD_COMPARISON.md         # Jenkins vs GitLab comparison
+│   ├── SETUP_COMPLETE.md           # Initial setup walkthrough
+│   ├── SYSTEM_EXPLANATION.md       # Architecture deep dive
+│   ├── FUSION_RANKING_EXPLAINED.md # RRF algorithm details
+│   ├── SWITCHING_LLM_PROVIDERS.md  # Ollama vs OpenAI guide
+│   └── OLLAMA_ADDED.md             # Ollama integration summary
 │
 └── Data Files (Created at runtime)
-    ├── chroma_db/              # Vector embeddings (persistent)
-    └── hitl_feedback.json      # HITL learning data (persistent)
+    ├── chroma_db/                  # Vector embeddings (persistent)
+    └── hitl_feedback.json          # HITL learning data (persistent)
 ```
 
 ## 🔧 Configuration
@@ -419,7 +437,107 @@ Query 2: "How does RAG work?" (similar to Query 1)
 
 See [FUSION_RANKING_EXPLAINED.md](FUSION_RANKING_EXPLAINED.md) for detailed RRF documentation.
 
-## 🔒 Security Notes
+## � Deployment & CI/CD
+
+### Automated Builds to AWS ECR
+
+This project includes CI/CD pipelines for automated Docker image builds:
+
+#### Jenkins Pipeline
+
+```bash
+# See JENKINS_ECR_SETUP.md for detailed setup
+1. Install Jenkins with Docker support
+2. Configure AWS credentials
+3. Create Pipeline job pointing to Jenkinsfile
+4. Run build → Image pushed to ECR
+```
+
+**Features:**
+- Builds on every push
+- Tags with build number
+- Automatic ECR push
+- Build artifacts management
+
+📖 **Full Guide**: [JENKINS_ECR_SETUP.md](JENKINS_ECR_SETUP.md)
+
+#### GitLab CI/CD Pipeline
+
+```bash
+# See GITLAB_CI_SETUP.md for detailed setup
+1. Push code to GitLab
+2. Add AWS credentials to CI/CD variables
+3. Enable GitLab Runner
+4. Pipeline runs automatically
+```
+
+**Features:**
+- Native GitLab integration
+- Multi-stage builds
+- Automatic verification
+- Built-in artifact system
+
+📖 **Full Guide**: [GITLAB_CI_SETUP.md](GITLAB_CI_SETUP.md)
+
+#### Choosing Between Jenkins & GitLab
+
+| Use Case | Recommended |
+|----------|-------------|
+| Already using Jenkins | **Jenkins** |
+| Code on GitLab | **GitLab CI/CD** |
+| Need flexibility | **Jenkins** |
+| Want simplicity | **GitLab CI/CD** |
+| Multiple Git providers | **Jenkins** |
+
+📊 **Detailed Comparison**: [CI_CD_COMPARISON.md](CI_CD_COMPARISON.md)
+
+### Pull & Run from ECR
+
+After CI/CD build completes:
+
+```bash
+# Authenticate with ECR
+aws ecr get-login-password --region us-east-1 | \
+    docker login --username AWS --password-stdin \
+    797240615162.dkr.ecr.us-east-1.amazonaws.com
+
+# Pull the image
+docker pull 797240615162.dkr.ecr.us-east-1.amazonaws.com/agentic_rag_with_re-ranker:latest
+
+# Run it
+docker run -it --rm \
+    -e NEO4J_URI=bolt://host.docker.internal:7687 \
+    -e LLM_PROVIDER=ollama \
+    797240615162.dkr.ecr.us-east-1.amazonaws.com/agentic_rag_with_re-ranker:latest
+```
+
+### Deploy to Production
+
+Use the ECR image in your deployment platform:
+
+**Kubernetes:**
+```yaml
+spec:
+  containers:
+  - name: rag-app
+    image: 797240615162.dkr.ecr.us-east-1.amazonaws.com/agentic_rag_with_re-ranker:latest
+```
+
+**AWS ECS:**
+```json
+{
+  "image": "797240615162.dkr.ecr.us-east-1.amazonaws.com/agentic_rag_with_re-ranker:latest"
+}
+```
+
+**Docker Compose:**
+```yaml
+services:
+  rag-app:
+    image: 797240615162.dkr.ecr.us-east-1.amazonaws.com/agentic_rag_with_re-ranker:latest
+```
+
+## �🔒 Security Notes
 
 - Never commit `.env` file with real API keys
 - Use environment variables for sensitive configuration

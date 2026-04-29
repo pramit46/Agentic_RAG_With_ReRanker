@@ -1,0 +1,141 @@
+# GitLab CI/CD Pipeline for AWS ECR
+# Builds Docker image and pushes to AWS ECR
+
+variables:
+  # AWS ECR Configuration
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 797240615162.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: agentic_rag_with_re-ranker
+  
+  # Docker Configuration
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  
+  # Image naming
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_FULL: $ECR_REGISTRY/$ECR_REPOSITORY
+
+# Use Docker-in-Docker for building
+image: docker:24-cli
+
+services:
+  - docker:24-dind
+
+# Pipeline stages
+stages:
+  - build
+  - push
+  - verify
+
+# Run before each job
+before_script:
+  - echo "Pipeline started for commit $CI_COMMIT_SHORT_SHA"
+  - echo "Building image $IMAGE_FULL:$IMAGE_TAG"
+
+# Build Docker image
+build:
+  stage: build
+  script:
+    - echo "Building Docker image..."
+    - docker build -t $IMAGE_FULL:$IMAGE_TAG .
+    - docker tag $IMAGE_FULL:$IMAGE_TAG $IMAGE_FULL:latest
+    - echo "Docker image built successfully"
+    
+    # Save image as artifact for next stage
+    - docker save $IMAGE_FULL:$IMAGE_TAG -o image.tar
+    - docker save $IMAGE_FULL:latest -o image-latest.tar
+  
+  artifacts:
+    paths:
+      - image.tar
+      - image-latest.tar
+    expire_in: 1 hour
+  
+  tags:
+    - docker
+  
+  only:
+    - main
+    - develop
+    - tags
+
+# Push to AWS ECR
+push:
+  stage: push
+  image: 
+    name: amazon/aws-cli:latest
+    entrypoint: [""]
+  
+  before_script:
+    - echo "Installing Docker client..."
+    - yum install -y docker
+    
+    # Load Docker images from artifacts
+    - docker load -i image.tar
+    - docker load -i image-latest.tar
+    
+    # Login to AWS ECR
+    - echo "Logging in to AWS ECR..."
+    - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+  
+  script:
+    - echo "Pushing image to ECR..."
+    - docker push $IMAGE_FULL:$IMAGE_TAG
+    - docker push $IMAGE_FULL:latest
+    - echo "✅ Image pushed successfully!"
+    
+    - echo "Image available at:"
+    - echo "  - $IMAGE_FULL:$IMAGE_TAG"
+    - echo "  - $IMAGE_FULL:latest"
+  
+  after_script:
+    - docker logout $ECR_REGISTRY || true
+  
+  tags:
+    - docker
+  
+  only:
+    - main
+    - develop
+    - tags
+  
+  dependencies:
+    - build
+
+# Verify push was successful
+verify:
+  stage: verify
+  image: amazon/aws-cli:latest
+  
+  script:
+    - echo "Verifying image in ECR..."
+    - |
+      aws ecr describe-images \
+        --repository-name $ECR_REPOSITORY \
+        --image-ids imageTag=$IMAGE_TAG \
+        --region $AWS_REGION
+    - echo "✅ Image verification successful!"
+  
+  tags:
+    - docker
+  
+  only:
+    - main
+    - develop
+    - tags
+  
+  dependencies: []
+
+# Optional: Build on merge requests (without pushing)
+build-mr:
+  stage: build
+  script:
+    - echo "Building Docker image for merge request..."
+    - docker build -t $IMAGE_FULL:mr-$CI_MERGE_REQUEST_IID .
+    - echo "✅ MR build successful (not pushed to ECR)"
+  
+  tags:
+    - docker
+  
+  only:
+    - merge_requests
