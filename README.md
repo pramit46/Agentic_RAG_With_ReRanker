@@ -2,23 +2,31 @@
 
 A production-ready Retrieval-Augmented Generation (RAG) system that combines:
 - **Vector Database** (ChromaDB) for semantic search
-- **Graph Database** (Neo4j) for relationship-based retrieval
+- **Graph Database** (Neo4j) for relationship-based retrieval with natural language query support
 - **BM25** for traditional keyword matching
 - **Human-in-the-Loop (HITL)** re-ranking with implicit feedback learning
+- **Flexible LLM Support** - Works with both Ollama (local, free) and OpenAI
 
 ## ✨ Features
 
 ### Multi-Source Retrieval
-- **Vector Search**: Semantic similarity using sentence transformers
-- **BM25 Search**: Probabilistic keyword-based retrieval
-- **Graph Search**: Relationship and entity-based queries via Neo4j
-- **Fusion Ranking**: Reciprocal Rank Fusion (RRF) to combine results
+- **Vector Search**: Semantic similarity using sentence transformers (`all-MiniLM-L6-v2`)
+- **BM25 Search**: Probabilistic keyword-based retrieval with tokenization
+- **Graph Search**: Relationship and entity-based queries via Neo4j with intelligent keyword extraction
+- **Fusion Ranking**: Reciprocal Rank Fusion (RRF) to combine results optimally
 
 ### Intelligent Re-ranking
 - **HITL Learning**: Learns from user selections via implicit feedback
 - **Automatic Boosting**: Selected documents rank higher in future similar queries
 - **Decay Mechanism**: Older feedback gradually decays to prioritize recent patterns
 - **Cross-Query Learning**: Applies learnings to similar queries automatically
+- **Persistent Memory**: Feedback stored in JSON and survives application restarts
+
+### Advanced Features
+- **Natural Language Graph Queries**: Handles questions like "What is Neo4j?" by extracting keywords
+- **Case-Insensitive Search**: All search methods handle different cases seamlessly
+- **Dual LLM Support**: Switch between Ollama (free, local) and OpenAI (cloud) via config
+- **Docker Deployment**: Complete containerized setup with docker-compose
 
 ### Production Features
 - Persistent storage for all data (vectors, graphs, feedback)
@@ -26,16 +34,54 @@ A production-ready Retrieval-Augmented Generation (RAG) system that combines:
 - Rich CLI interface with beautiful formatting
 - Configurable via environment variables
 - Modular, extensible architecture
+- Health checks and service dependencies in Docker
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Docker (Recommended)
 
-1. **Python 3.8+**
-2. **Neo4j Database** (should be running at `localhost:7474`)
-3. **OpenAI API Key** (for LLM and embeddings)
+The easiest way to run everything:
 
-### Installation
+```bash
+# Start all services (Neo4j + Ollama + App)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Access the application
+docker attach rag-application
+
+# Stop everything
+docker-compose down
+```
+
+See [DOCKER_GUIDE.md](DOCKER_GUIDE.md) for complete Docker documentation.
+
+### Option 2: Local Setup
+
+#### Prerequisites
+
+1. **Python 3.12+**
+2. **Neo4j Database** (running at `localhost:7474`)
+3. **Ollama** (default, free) OR **OpenAI API Key**
+
+#### Installing Ollama (Recommended)
+
+```bash
+# macOS
+brew install ollama
+
+# Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama and pull model
+ollama serve
+ollama pull llama3.1:8b
+```
+
+
+#### Installation Steps
 
 1. **Clone or navigate to the project directory**
 
@@ -43,22 +89,43 @@ A production-ready Retrieval-Augmented Generation (RAG) system that combines:
 cd Agentic_RAG_With_ReRanker
 ```
 
-2. **Install dependencies**
+2. **Create virtual environment**
+
+```bash
+python3.12 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. **Install dependencies**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. **Configure environment**
+4. **Configure environment**
 
-Copy `.env.example` to `.env` and add your OpenAI API key:
+Copy `.env.example` to `.env`:
 
 ```bash
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
 ```
 
-4. **Ensure Neo4j is running**
+**For Ollama (default, free):**
+```bash
+# .env file
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+```
+
+**For OpenAI (requires API key):**
+```bash
+# .env file
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key-here
+```
+
+5. **Ensure Neo4j is running**
 
 ```bash
 # Neo4j should be accessible at:
@@ -67,54 +134,90 @@ cp .env.example .env
 # Password: password
 ```
 
-5. **Run the application**
+6. **Run the application**
 
 ```bash
-python main.py
+./start.sh
+# Or directly: python main.py
 ```
 
 ## 📖 Usage
 
 ### Interactive Mode
 
-The application starts in interactive mode with a CLI interface:
+The application starts in interactive mode with a rich CLI interface:
 
 ```
 Query: What is RAG and how does it work?
 ```
 
 The system will:
-1. Retrieve relevant documents from all sources
-2. Apply fusion ranking and HITL re-ranking
-3. Generate a comprehensive answer using LLM
-4. Ask if you want to provide feedback
+1. Extract keywords from your natural language query
+2. Retrieve relevant documents from all three sources (vector, BM25, graph)
+3. Apply fusion ranking (RRF algorithm) to combine results
+4. Apply HITL re-ranking based on past feedback
+5. Generate a comprehensive answer using your chosen LLM (Ollama or OpenAI)
+6. Display the answer with source references
+7. Ask if you want to provide feedback on which source was most helpful
+
+### Example Queries
+
+Natural language queries work seamlessly:
+- "What is Neo4j?"
+- "Explain vector databases"
+- "Tell me about RAG systems"
+- "How does BM25 work?"
 
 ### Commands
 
 - **Enter any question** - Query the system
 - `sample` - Show example queries
-- `stats` - Display system statistics
+- `stats` - Display system statistics (documents count, HITL interactions)
 - `reset` - Reset HITL feedback data
 - `help` - Show help message
 - `exit` - Exit the application
 
 ### HITL Feedback
 
-After each query, you can select which document was most helpful. This selection:
+After each query, you can select which document was most helpful (1-N). This selection:
 - Boosts that document's ranking for similar future queries
-- Learns patterns across related queries
+- Learns patterns across related queries using fuzzy matching
 - Improves system performance over time
+- Is persisted in `hitl_feedback.json` across restarts
+
+**Feedback Formula:**
+```
+score = base_score + (boost_factor × similarity × selection_count × recency)
+```
+
+### Switching LLM Providers
+
+Change `LLM_PROVIDER` in `.env`:
+
+```bash
+# Use Ollama (local, free)
+LLM_PROVIDER=ollama
+
+# Use OpenAI (requires API key)
+LLM_PROVIDER=openai
+```
+
+Restart the application to apply changes. See [SWITCHING_LLM_PROVIDERS.md](SWITCHING_LLM_PROVIDERS.md) for details.
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    User Query                           │
+│              User Query (Natural Language)              │
+│           "What is Neo4j?" → ["neo4j"]                  │
 └─────────────────────────────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│              Agentic RAG Orchestrator                   │
+│          Agentic RAG Orchestrator (agent.py)            │
+│     • Keyword Extraction for Graph Queries              │
+│     • Parallel Multi-Source Retrieval                   │
+│     • Result Deduplication                              │
 └─────────────────────────────────────────────────────────┘
                          │
          ┌───────────────┼───────────────┐
@@ -124,6 +227,9 @@ After each query, you can select which document was most helpful. This selection
 │   Vector    │  │    BM25     │  │   Graph     │
 │   Search    │  │   Search    │  │   Search    │
 │  (ChromaDB) │  │  (rank-bm25)│  │   (Neo4j)   │
+│             │  │             │  │             │
+│ Sentence    │  │ Tokenized   │  │ Cypher      │
+│ Embeddings  │  │ Keywords    │  │ Queries     │
 └─────────────┘  └─────────────┘  └─────────────┘
          │               │               │
          └───────────────┼───────────────┘
@@ -131,68 +237,131 @@ After each query, you can select which document was most helpful. This selection
               ┌─────────────────────┐
               │  Fusion Ranking     │
               │  (RRF Algorithm)    │
+              │  k=60, ranks→scores │
               └─────────────────────┘
                          │
                          ▼
               ┌─────────────────────┐
               │  HITL Re-ranking    │
               │  (Implicit Feedback)│
+              │  hitl_feedback.json │
               └─────────────────────┘
                          │
                          ▼
-              ┌─────────────────────┐
-              │   LLM Generation    │
-              │    (OpenAI GPT)     │
-              └─────────────────────┘
+         ┌───────────────┴───────────────┐
+         │                               │
+         ▼                               ▼
+┌─────────────────┐         ┌─────────────────┐
+│  Ollama (Free)  │   OR    │  OpenAI (Cloud) │
+│  llama3.1:8b    │         │  gpt-4-turbo    │
+│  Local LLM      │         │  API Required   │
+└─────────────────┘         └─────────────────┘
                          │
                          ▼
               ┌─────────────────────┐
               │   Final Answer      │
+              │   + Feedback Loop   │
               └─────────────────────┘
 ```
+
+### Key Components
+
+- **ChromaDB**: Persistent vector store with sentence-transformers embeddings
+- **Neo4j**: Graph database with entity relationships and Cypher queries
+- **BM25**: Okapi BM25 probabilistic ranking for keyword matching
+- **HITL Reranker**: Learns from selections, applies boost with decay
+- **Fusion Ranking**: RRF combines diverse retrieval methods optimally
+- **Dual LLM**: Ollama (local) or OpenAI (cloud) for answer generation
 
 ## 📁 Project Structure
 
 ```
 .
-├── agent.py              # Agentic RAG orchestrator
-├── vector_store.py       # ChromaDB vector database
-├── graph_store.py        # Neo4j graph database
-├── bm25_retriever.py     # BM25 keyword search
-├── hitl_reranker.py      # HITL re-ranking with implicit feedback
-├── config.py             # Configuration management
-├── sample_data.py        # Sample documents and queries
-├── main.py               # Main application entry point
-├── requirements.txt      # Python dependencies
-├── .env.example          # Environment variables template
-└── README.md             # This file
+├── agent.py                    # Main RAG orchestrator with fusion ranking
+├── vector_store.py             # ChromaDB vector database wrapper
+├── graph_store.py              # Neo4j graph database with keyword extraction
+├── bm25_retriever.py           # BM25 keyword search implementation
+├── hitl_reranker.py            # HITL re-ranking with implicit feedback
+├── config.py                   # Configuration management & validation
+├── sample_data.py              # Sample documents for testing
+├── main.py                     # CLI application entry point
+├── start.sh                    # Convenience launcher script
+│
+├── requirements.txt            # Python dependencies
+├── .env.example                # Environment variables template
+├── .env                        # Your configuration (not in git)
+│
+├── Dockerfile                  # Container image definition
+├── docker-compose.yml          # Full stack orchestration
+├── .dockerignore               # Docker build exclusions
+│
+├── README.md                   # This file
+├── DOCKER_GUIDE.md             # Complete Docker documentation
+├── SETUP_COMPLETE.md           # Initial setup guide
+├── SYSTEM_EXPLANATION.md       # Architecture deep dive
+├── FUSION_RANKING_EXPLAINED.md # RRF algorithm details
+├── SWITCHING_LLM_PROVIDERS.md  # LLM provider guide
+└── OLLAMA_ADDED.md             # Ollama integration summary
+│
+└── Data Files (Created at runtime)
+    ├── chroma_db/              # Vector embeddings (persistent)
+    └── hitl_feedback.json      # HITL learning data (persistent)
 ```
 
 ## 🔧 Configuration
 
 Edit `.env` to customize the system:
 
+### LLM Provider Settings
+
+**Ollama (Default - Local & Free):**
 ```bash
-# OpenAI Configuration
-OPENAI_API_KEY=your_key_here
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+# Alternatives: llama2, mistral, codellama, etc.
+```
+
+**OpenAI (Cloud - Requires API Key):**
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key-here
 LLM_MODEL=gpt-4-turbo-preview
 TEMPERATURE=0.7
+MAX_TOKENS=2000
+```
 
-# Neo4j Configuration
+### Database Configuration
+
+```bash
+# Neo4j Graph Database
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
 
-# Retrieval Settings
+# ChromaDB Vector Store
+CHROMA_PERSIST_DIRECTORY=./chroma_db
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+```
+
+### Retrieval Settings
+
+```bash
 TOP_K_VECTOR=5          # Top results from vector search
 TOP_K_BM25=5            # Top results from BM25
 TOP_K_GRAPH=3           # Top results from graph search
 FINAL_TOP_K=10          # Final number of results to return
-
-# HITL Configuration
-HITL_BOOST_FACTOR=2.0   # How much to boost selected documents
-HITL_DECAY_FACTOR=0.95  # Decay rate for old feedback
 ```
+
+### HITL Configuration
+
+```bash
+HITL_BOOST_FACTOR=2.0   # How much to boost selected documents (multiplier)
+HITL_DECAY_FACTOR=0.95  # Decay rate for old feedback (0.0-1.0)
+HITL_FEEDBACK_FILE=hitl_feedback.json
+```
+
+See [config.py](config.py) for all available options.
 
 ## 📊 How HITL Re-ranking Works
 
@@ -215,27 +384,40 @@ Query 2: "How does RAG work?" (similar to Query 1)
 → RAG fundamentals document gets boosted automatically!
 ```
 
-## 🎯 Key Components
+## 🎯 Key Components Explained
 
 ### Vector Store (ChromaDB)
-- Stores document embeddings using Sentence-BERT
-- Performs semantic similarity search
-- Persistent storage for embeddings
+- Stores document embeddings using `all-MiniLM-L6-v2` Sentence-BERT model
+- Performs semantic similarity search with cosine distance
+- Persistent storage in `./chroma_db` directory
+- Returns top-k most semantically similar documents
 
 ### Graph Store (Neo4j)
 - Stores documents as nodes with entity relationships
-- Enables graph traversal queries
+- **Intelligent keyword extraction** from natural language queries
+- Enables graph traversal queries using Cypher
+- Case-insensitive search with `toLower()` matching
 - Captures semantic relationships between concepts
 
 ### BM25 Retriever
-- Traditional probabilistic retrieval
-- Excellent for exact keyword matching
-- Complements semantic search
+- Traditional probabilistic retrieval using Okapi BM25
+- Excellent for exact keyword matching and rare terms
+- Tokenizes text for better keyword recognition
+- Complements semantic search methods
 
 ### HITL Re-ranker
 - Records user selections as implicit feedback
-- Boosts relevant documents for similar queries
-- Self-improving system over time
+- Boosts relevant documents for similar queries (fuzzy matching)
+- Self-improving system over time with temporal decay
+- Persistent across sessions via `hitl_feedback.json`
+
+### Fusion Ranking (RRF)
+- Reciprocal Rank Fusion with k=60 constant
+- Combines ranks from diverse retrieval methods
+- More robust than score averaging
+- Formula: `score = Σ(1/(k + rank_i))`
+
+See [FUSION_RANKING_EXPLAINED.md](FUSION_RANKING_EXPLAINED.md) for detailed RRF documentation.
 
 ## 🔒 Security Notes
 
